@@ -130,10 +130,23 @@ def connect_to_host(load_hosts, path_to_rac):
                 process_cluster_info(cluster_info)
                 handle_cluster_actions(cluster_info, selected_host)
 
+def create_database(cluster, cluster_user, cluster_pwd, newdb, host_db_server, user, password, shedJobs, selected_host):
+    """Создать новую базу данных в кластере."""
+    command = f'{path_to_rac} infobase --cluster={cluster} create --create-database --cluster-user="{cluster_user}" --cluster-pwd="{cluster_pwd}" --name="{newdb}" --dbms=PostgreSQL --db-server={host_db_server} --db-name="{newdb}" --locale=ru --db-user="{user}" --db-pwd="{password}" --license-distribution=allow --scheduled-jobs-deny={shedJobs} {selected_host}'
+    # print(f'\n{command}\n')
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='cp866')
+    
+    if result.returncode == 0:
+        print(f"База данных '{newdb}' успешно создана.")
+        return result.stdout  # Возвращаем стандартный вывод
+    else:
+        print(f"Ошибка при создании базы данных:\n{result.stderr}")
+        return result.stderr  # Возвращаем сообщение об ошибке
+
 def handle_cluster_actions(cluster_info, selected_host):
     cluster_user, cluster_pwd = '', ''
     while True:
-        options = ['Задать логин/пароль', 'Вывести список информационных баз', 'Назад']
+        options = ['Задать логин/пароль', 'Вывести список информационных баз', 'Создать новую базу данных', 'Назад']
         menu = InteractiveMenu(options, 'Выберите действие с кластером:')
         cluster_option_index = menu.display_menu()
 
@@ -156,9 +169,22 @@ def handle_cluster_actions(cluster_info, selected_host):
                         # Повторный запрос с новыми данными
                         command = f'{path_to_rac} infobase --cluster={cluster_code} --cluster-user={cluster_user} --cluster-pwd={cluster_pwd} summary list {selected_host}'
                         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='cp866')
-
+                
+                print('Список информационных баз:\n')
                 print(result.stdout if result.returncode == 0 else result.stderr)
             else:
                 print("Не удалось получить код кластера.\n")
-        elif cluster_option_index == 2:  # Назад
+        elif cluster_option_index == 2:  # Создать новую базу данных
+            if 'cluster' in cluster_info:
+                cluster_code = cluster_info.splitlines()[0].split(':')[1].strip()
+                newdb = input("Введите имя новой базы данных: ")
+                host_db_server = input("Введите адрес сервера базы данных: ")  # Новый ввод
+                user = input("Введите имя пользователя базы данных: ")
+                password = input("Введите пароль пользователя базы данных: ")
+                shedJobs = "on"  # Параметры для запланированных задач
+                creation_result = create_database(cluster_code, cluster_user, cluster_pwd, newdb, host_db_server, user, password, shedJobs, selected_host)
+                print(f"Результат выполнения команды создания базы данных:\n{creation_result}")  # Выводим результат
+            else:
+                print("Не удалось получить код кластера.\n")
+        elif cluster_option_index == 3:  # Назад
             break
