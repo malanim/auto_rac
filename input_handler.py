@@ -119,23 +119,23 @@ class InteractiveMenu:
         return curses.wrapper(curses_main)  # Запускаем основную функцию curses
 
 # Пример использования класса InteractiveMenu
-# if __name__ == "__main__":
-#     options = ["Вариант 1", "Вариант 2", "Вариант 3", "Выйти"]
-#     menu = InteractiveMenu(options, "Вариант:")
-#     selected_option_index = menu.display_menu()  # Отображаем меню и получаем выбранный вариант
-#     print(f"Вы выбрали вариант номер: {selected_option_index + 1}")  # +1 для отображения номера в 1-индексации
+if __name__ == "__main__":
+    options = ["Вариант 1", "Вариант 2", "Вариант 3", "Выйти"]
+    menu = InteractiveMenu(options, "Вариант:")
+    selected_option_index = menu.display_menu()  # Отображаем меню и получаем выбранный вариант
+    print(f"Вы выбрали вариант номер: {selected_option_index + 1}")  # +1 для отображения номера в 1-индексации
 
 class CredentialsManager:
     def __init__(self):
         self.os_type = platform.system()
 
     def get_credentials(self):
-        """Запросить логин и пароль для кластера."""
-        user = input("Введите логин для кластера: ")
+        """Запросить логин."""
+        user = input("Введите логин: ")
         pwd = self.get_password()  # Используем метод для получения пароля
         return user, pwd
 
-    def get_password(self, prompt="Введите пароль для кластера: "):
+    def get_password(self, prompt="Введите пароль: "):
         """Получить пароль, отображая символы в виде звездочек."""
         if self.os_type == 'Windows':
             return self._get_password_windows(prompt)
@@ -194,7 +194,7 @@ class CredentialsManager:
         return ch
 
 # Пример использования класса CredentialsManager
-if __name__ == "__main__":
-    manager = CredentialsManager()
-    user, pwd = manager.get_credentials()
-    print(f"Логин: {user}, Пароль: {pwd}")  # Для проверки
+# if __name__ == "__main__":
+#     manager = CredentialsManager()
+#     user, pwd = manager.get_credentials()
+#     print(f"Логин: {user}, Пароль: {pwd}")  # Для проверки

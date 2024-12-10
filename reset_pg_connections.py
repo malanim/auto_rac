@@ -2,7 +2,7 @@ import subprocess
 
 # Параметры подключения к базе данных
 db_config = {
-    'dbname': 'test3',
+    'dbname': 'test1',
     'user': 'postgres',
     'password': 'postgres',
     'host': '10.10.10.200'
