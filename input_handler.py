@@ -126,24 +126,65 @@ if __name__ == "__main__":
     print(f"Вы выбрали вариант номер: {selected_option_index + 1}")  # +1 для отображения номера в 1-индексации
 
 class CredentialsManager:
+    """
+    Менеджер для получения учетных данных пользователя (логин и пароль).
+
+    Этот класс предоставляет методы для безопасного запроса логина и пароля
+    от пользователя, скрывая ввод пароля с помощью символов-звездочек.
+    Поддерживает как Windows, так и UNIX-подобные системы.
+    """
+
     def __init__(self):
+        """
+        Инициализация менеджера учетных данных.
+
+        Определяет тип операционной системы для выбора метода
+        получения пароля.
+        """
         self.os_type = platform.system()
 
     def get_credentials(self):
-        """Запросить логин."""
+        """
+        Запрашивает у пользователя логин и пароль.
+
+        Возвращает:
+            tuple: Кортеж, содержащий логин (str) и пароль (str).
+
+        Пример использования:
+            user, pwd = credentials_manager.get_credentials()
+        """
         user = input("Введите логин: ")
         pwd = self.get_password()  # Используем метод для получения пароля
         return user, pwd
 
     def get_password(self, prompt="Введите пароль: "):
-        """Получить пароль, отображая символы в виде звездочек."""
+        """
+        Получает пароль, отображая символы в виде звездочек.
+
+        Параметры:
+            prompt (str): Сообщение, которое будет отображаться при запросе пароля.
+
+        Возвращает:
+            str: Введенный пользователем пароль.
+
+        Пример использования:
+            password = credentials_manager.get_password()
+        """
         if self.os_type == 'Windows':
             return self._get_password_windows(prompt)
         else:
             return self._get_password_unix(prompt)
 
     def _get_password_windows(self, prompt):
-        """Запросить пароль для Windows."""
+        """
+        Запрашивает пароль для Windows.
+
+        Параметры:
+            prompt (str): Сообщение, которое будет отображаться при запросе пароля.
+
+        Возвращает:
+            str: Введенный пользователем пароль.
+        """
         print(prompt, end='', flush=True)
         password = ''
         while True:
@@ -163,7 +204,15 @@ class CredentialsManager:
         return password
 
     def _get_password_unix(self, prompt):
-        """Запросить пароль для UNIX-подобных систем."""
+        """
+        Запрашивает пароль для UNIX-подобных систем.
+
+        Параметры:
+            prompt (str): Сообщение, которое будет отображаться при запросе пароля.
+
+        Возвращает:
+            str: Введенный пользователем пароль.
+        """
         print(prompt, end='', flush=True)
         password = ''
         while True:
@@ -183,7 +232,12 @@ class CredentialsManager:
         return password
 
     def getch(self):
-        """Читать один символ с клавиатуры (для UNIX)."""
+        """
+        Читает один символ с клавиатуры (для UNIX).
+
+        Возвращает:
+            str: Введенный пользователем символ.
+        """
         fd = sys.stdin.fileno()
         old_settings = termios.tcgetattr(fd)
         try:

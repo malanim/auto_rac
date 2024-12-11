@@ -5,7 +5,6 @@ from input_handler import CredentialsManager, InteractiveMenu  # Импорти�
 import threading
 import time
 from pathlib import Path
-from encryption_handler import EncryptionHandler  # Импортируем EncryptionHandler
 
 # Путь до утилиты
 path_to_rac = r'"C:\Program Files\1cv8\8.3.24.1761\bin\rac.exe"'
@@ -141,8 +140,9 @@ def connect_to_host(load_hosts, path_to_rac, encryption_handler):
                 cluster_code = cluster_info.splitlines()[0].split(':')[1].strip()  # Предполагается, что код кластера находится в первой строке
                 cluster_user, cluster_pwd = get_cluster_credentials(encryption_handler, cluster_code)  # Передаем cluster_code
                 if not cluster_user or not cluster_pwd:
+                    pass_handler = CredentialsManager()
                     cluster_user = input("Введите логин кластера: ")
-                    cluster_pwd = input("Введите пароль кластера: ")
+                    cluster_pwd = pass_handler.get_password("Введите пароль кластера: ")
                     set_cluster_credentials(encryption_handler, cluster_code, cluster_user, cluster_pwd)  # Передаем cluster_code
 
                 process_cluster_info(cluster_info)
@@ -167,8 +167,9 @@ def handle_cluster_actions(encryption_handler, cluster_info, selected_host, clus
         cluster_option_index = menu.display_menu()
 
         if cluster_option_index == 0:  # Задать логин/пароль
+            pass_handler = CredentialsManager()
             cluster_user = input("Введите логин кластера: ")
-            cluster_pwd = input("Введите пароль кластера: ")
+            cluster_pwd = pass_handler.get_password("Введите пароль кластера: ")
             # Извлекаем cluster_code из cluster_info
             cluster_code = cluster_info.splitlines()[0].split(':')[1].strip()  # Предполагается, что код кластера находится в первой строке
             set_cluster_credentials(encryption_handler, cluster_code, cluster_user, cluster_pwd)
@@ -182,8 +183,9 @@ def handle_cluster_actions(encryption_handler, cluster_info, selected_host, clus
                 if result.returncode != 0:
                     if "Ошибка операции администрирования" in result.stderr:
                         print("Ошибка: администратор кластера не аутентифицирован.")
+                        pass_handler = CredentialsManager()
                         cluster_user = input("Введите логин кластера: ")
-                        cluster_pwd = input("Введите пароль кластера: ")
+                        cluster_pwd = pass_handler.get_password("Введите пароль кластера: ")
                         set_cluster_credentials(encryption_handler, cluster_code, cluster_user, cluster_pwd)
                         command = f'{path_to_rac} infobase --cluster={cluster_code} --cluster-user={cluster_user} --cluster-pwd={cluster_pwd} summary list {selected_host}'
                         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='cp866')
