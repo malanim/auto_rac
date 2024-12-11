@@ -1,5 +1,6 @@
 # menu_actions.py
 
+import os
 import subprocess
 from input_handler import CredentialsManager, InteractiveMenu  # Импортируйте необходимые классы
 import threading
@@ -160,9 +161,80 @@ def create_database(cluster, cluster_user, cluster_pwd, newdb, host_db_server, u
         print(f"Ошибка при создании базы данных:\n{result.stderr}")
         return result.stderr  # Возвращаем сообщение об ошибке
 
+def delete_database(cluster, cluster_user, cluster_pwd, selected_host):
+    """Удалить информационную базу по названию и разорвать подключения."""
+    
+    # Запрашиваем у пользователя название базы данных для удаления
+    infobase_name = input("Введите название базы данных для удаления: ")
+    
+    # Запрашиваем у пользователя логин и пароль для PostgreSQL
+    pass_handler = CredentialsManager()
+    psql_user = input("Введите логин для PostgreSQL: ")
+    psql_password = pass_handler.get_password("Введите пароль для PostgreSQL: ")
+    
+    # Разрываем подключения к базе данных
+    os.environ['PGPASSWORD'] = psql_password
+    command = [
+        r"C:\Program Files\PostgreSQL\16.3-16.1C\bin\psql.exe",
+        "-h", selected_host,
+        "-U", psql_user,
+        "-d", infobase_name,  # Используем infobase_name как имя базы данных
+        "-c", f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{infobase_name}' AND pid <> pg_backend_pid();"
+    ]
+
+    try:
+        # Выполнение команды
+        result = subprocess.run(command, check=True, text=True, capture_output=True)
+        # print("Output:", result.stdout)
+
+    except subprocess.CalledProcessError as e:
+        print("Ошибка при разрыве подключений:", e)
+        print("Output:", e.output)
+        print("Error:", e.stderr.encode('cp1251').decode('utf-8'))
+
+    finally:
+        # Удаление переменной окружения
+        del os.environ['PGPASSWORD']
+
+    # Получаем список информационных баз
+    command = f'{path_to_rac} infobase --cluster={cluster} --cluster-user={cluster_user} --cluster-pwd={cluster_pwd} summary list {selected_host}'
+    # print(command)
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='cp866')
+
+    if result.returncode != 0:
+        print(f"Ошибка при получении списка информационных баз:\n{result.stderr}")
+        return
+
+    # Выводим список баз данных
+    # print('Список информационных баз:\n')
+    # print(result.stdout)
+
+    # Находим id_infobase по названию infobase_name
+    id_infobase = None
+    lines = result.stdout.splitlines()
+    for i in range(len(lines)):
+        if 'name' in lines[i] and infobase_name in lines[i]:
+            # Если нашли нужное имя, то берем id из предыдущей строки
+            id_infobase = lines[i - 1].split(':')[1].strip()
+            break
+
+    if id_infobase is None:
+        print(f"Информационная база с названием '{infobase_name}' не найдена.")
+        return
+
+    # Выполняем команду для удаления базы данных
+    command = f'{path_to_rac} infobase --cluster={cluster} drop --drop-database --cluster-user="{cluster_user}" --cluster-pwd="{cluster_pwd}" --infobase={id_infobase} {selected_host}'
+    print(command)
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='cp866')
+
+    if result.returncode == 0:
+        print(f"Информационная база '{infobase_name}' успешно удалена.")
+    else:
+        print(f"Ошибка при удалении информационной базы:\n{result.stderr}")
+
 def handle_cluster_actions(encryption_handler, cluster_info, selected_host, cluster_user, cluster_pwd):
     while True:
-        options = ['Задать логин/пароль', 'Вывести список информационных баз', 'Создать новую базу данных', 'Назад']
+        options = ['Задать логин/пароль', 'Вывести список информационных баз', 'Создать новую базу данных', 'Удалить информационную базу', 'Назад']
         menu = InteractiveMenu(options, 'Выберите действие с кластером:')
         cluster_option_index = menu.display_menu()
 
@@ -206,5 +278,9 @@ def handle_cluster_actions(encryption_handler, cluster_info, selected_host, clus
                 print(f"Результат выполнения команды создания базы данных:\n{creation_result}")
             else:
                 print("Не удалось получить код кластера.\n")
-        elif cluster_option_index == 3:  # Назад
+        elif cluster_option_index == 3:  # Удалить информационную базу
+            if 'cluster' in cluster_info:
+                cluster_code = cluster_info.splitlines()[0].split(':')[1].strip()
+                delete_database(cluster_code, cluster_user, cluster_pwd, selected_host)
+        elif cluster_option_index == 4:  # Назад
             break
