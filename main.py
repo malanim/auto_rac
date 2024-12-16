@@ -44,7 +44,7 @@ def register_user(handler):
 def main():
     print(hello_print)
 
-    handler = EncryptionHandler("encrypted_data.json")  # Инициализация здесь
+    handler = EncryptionHandler(r"C:\git_proj\auto_rac\encrypted_data.json")  # Инициализация здесь
 
     while True:  # Бесконечный цикл
         options = ['Авторизация', 'Регистрация', 'Выход']
