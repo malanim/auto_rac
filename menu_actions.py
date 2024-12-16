@@ -162,7 +162,7 @@ def create_database(cluster, cluster_user, cluster_pwd, newdb, host_db_server, u
         return result.stderr  # Возвращаем сообщение об ошибке
 
 def delete_database(cluster, cluster_user, cluster_pwd, selected_host):
-    """Удалить информационную базу по названию и разорвать подключения."""
+    """Разорвать подключения и удалить информационную базу по названию."""
     
     # Запрашиваем у пользователя название базы данных для удаления
     infobase_name = input("Введите название базы данных для удаления: ")
@@ -232,6 +232,68 @@ def delete_database(cluster, cluster_user, cluster_pwd, selected_host):
     else:
         print(f"Ошибка при удалении информационной базы:\n{result.stderr}")
 
+def get_summary_list(encryption_handler, cluster_info, selected_host, cluster_user, cluster_pwd):
+    if 'cluster' in cluster_info:
+        cluster_code = cluster_info.splitlines()[0].split(':')[1].strip()
+        command = f'{path_to_rac} infobase --cluster={cluster_code} --cluster-user={cluster_user} --cluster-pwd={cluster_pwd} summary list {selected_host}'
+        result_rac = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='cp866')
+
+        if result_rac.returncode != 0:
+            if "Ошибка операции администрирования" in result_rac.stderr:
+                print("Ошибка: администратор кластера не аутентифицирован.")
+                pass_handler = CredentialsManager()
+                cluster_user = input("Введите логин кластера: ")
+                cluster_pwd = pass_handler.get_password("Введите пароль кластера: ")
+                set_cluster_credentials(encryption_handler, cluster_code, cluster_user, cluster_pwd)
+                command = f'{path_to_rac} infobase --cluster={cluster_code} --cluster-user={cluster_user} --cluster-pwd={cluster_pwd} summary list {selected_host}'
+                result_rac = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='cp866')
+
+        # Получаем список баз данных из psql
+        host = input("Введите хость сервера баз данных: ")
+        pass_handler = CredentialsManager()
+        user = input("Введите имя пользователя базы данных: ")
+        password = pass_handler.get_password("Введите пароль пользователя базы данных: ")
+        os.environ['PGPASSWORD'] = password
+        command_psql = [
+            r"C:\Program Files\PostgreSQL\16.3-16.1C\bin\psql.exe",
+            "-h", host,
+            "-U", user,
+            "-c", '''SELECT datname AS "Name", 
+                        pg_size_pretty(pg_database_size(datname)) AS "Size"
+                    FROM pg_database
+                    ORDER BY pg_database_size(datname) DESC;
+                    '''
+        ]
+        result_psql = subprocess.run(command_psql, check=True, text=True, capture_output=True)
+        del os.environ['PGPASSWORD']
+
+        # Обрабатываем результаты
+        bases_rac = {}
+        for line in result_rac.stdout.splitlines():
+            if 'name' in line:
+                base_name = line.split(':')[1].strip()
+                bases_rac[base_name] = ''
+
+        bases_psql = {}
+        for line in result_psql.stdout.splitlines():
+            if '|' in line:
+                base_name, base_size = line.split('|')
+                base_name = base_name.strip()
+                base_size = base_size.strip()
+                bases_psql[base_name] = base_size
+
+        # Сравниваем списки баз данных
+        common_bases = []
+        for base_name in bases_rac:
+            if base_name in bases_psql:
+                common_bases.append((base_name, bases_psql[base_name]))
+
+        return common_bases
+
+    else:
+        print("Не удалось получить код кластера.\n")
+        return []
+
 def handle_cluster_actions(encryption_handler, cluster_info, selected_host, cluster_user, cluster_pwd):
     while True:
         options = ['Задать логин/пароль', 'Вывести список информационных баз', 'Создать новую базу данных', 'Удалить информационную базу', 'Назад']
@@ -247,32 +309,17 @@ def handle_cluster_actions(encryption_handler, cluster_info, selected_host, clus
             set_cluster_credentials(encryption_handler, cluster_code, cluster_user, cluster_pwd)
             print('Логин и пароль кластера сохранены.\n')
         elif cluster_option_index == 1:  # Вывести список информационных баз
-            if 'cluster' in cluster_info:
-                cluster_code = cluster_info.splitlines()[0].split(':')[1].strip()
-                command = f'{path_to_rac} infobase --cluster={cluster_code} --cluster-user={cluster_user} --cluster-pwd={cluster_pwd} summary list {selected_host}'
-                result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='cp866')
-
-                if result.returncode != 0:
-                    if "Ошибка операции администрирования" in result.stderr:
-                        print("Ошибка: администратор кластера не аутентифицирован.")
-                        pass_handler = CredentialsManager()
-                        cluster_user = input("Введите логин кластера: ")
-                        cluster_pwd = pass_handler.get_password("Введите пароль кластера: ")
-                        set_cluster_credentials(encryption_handler, cluster_code, cluster_user, cluster_pwd)
-                        command = f'{path_to_rac} infobase --cluster={cluster_code} --cluster-user={cluster_user} --cluster-pwd={cluster_pwd} summary list {selected_host}'
-                        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='cp866')
-
-                print('Список информационных баз:\n')
-                print(result.stdout if result.returncode == 0 else result.stderr)
-            else:
-                print("Не удалось получить код кластера.\n")
+            common_bases = get_summary_list(encryption_handler, cluster_info, selected_host, cluster_user, cluster_pwd)
+            for base_name, base_size in common_bases:
+                print(f"{base_name}: {base_size}")
         elif cluster_option_index == 2:  # Создать новую базу данных
             if 'cluster' in cluster_info:
                 cluster_code = cluster_info.splitlines()[0].split(':')[1].strip()
                 newdb = input("Введите имя новой базы данных: ")
                 host_db_server = input("Введите адрес сервера базы данных: ")
+                pass_handler = CredentialsManager()
                 user = input("Введите имя пользователя базы данных: ")
-                password = input("Введите пароль пользователя базы данных: ")
+                password = pass_handler.get_password("Введите пароль пользователя базы данных: ")
                 shedJobs = "on"  # Параметры для запланированных задач
                 creation_result = create_database(cluster_code, cluster_user, cluster_pwd, newdb, host_db_server, user, password, shedJobs, selected_host)
                 print(f"Результат выполнения команды создания базы данных:\n{creation_result}")
