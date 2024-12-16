@@ -63,6 +63,41 @@ def set_cluster_credentials(encryption_handler, cluster_code, cluster_user, clus
     encryption_handler.encrypt(cluster_user, f"cluster_user_{cluster_code}")
     encryption_handler.encrypt(cluster_pwd, f"cluster_pwd_{cluster_code}")
 
+def get_postgres_credentials(encryption_handler, server, rewrite=False):
+    """Получить логин и пароль для PostgreSQL, если они уже сохранены. Иначе запросить их у пользователя."""
+    if rewrite==True:
+        pass_handler = CredentialsManager()
+        pg_user = input("Введите логин для PostgreSQL: ")
+        pg_pwd = pass_handler.get_password("Введите пароль для PostgreSQL: ")
+        encryption_handler.encrypt(pg_user, f"pg_user_{server}")
+        encryption_handler.encrypt(pg_pwd, f"pg_pwd_{server}")
+    else:
+        try:
+            pg_user = encryption_handler.decrypt(f"pg_user_{server}")
+            pg_pwd = encryption_handler.decrypt(f"pg_pwd_{server}")
+        except:
+            pass_handler = CredentialsManager()
+            pg_user = input("Введите логин для PostgreSQL: ")
+            pg_pwd = pass_handler.get_password("Введите пароль для PostgreSQL: ")
+            encryption_handler.encrypt(pg_user, f"pg_user_{server}")
+            encryption_handler.encrypt(pg_pwd, f"pg_pwd_{server}")
+
+    return pg_user, pg_pwd
+
+def get_postgres_adres(encryption_handler, cluster, rewrite=False):
+    """Получить сервер PostgreSQL, если он сохранен. Иначе запросить его у пользователя."""
+    if rewrite==True:
+        server_sql = input(f"Введите сервер PostgreSQL для текущего кластера: ")
+        encryption_handler.encrypt(server_sql, f"server_sql_{cluster}")
+    else:
+        try:
+            server_sql = encryption_handler.decrypt(f"server_sql_{cluster}")
+        except:
+            server_sql = input(f"Введите сервер PostgreSQL для кластера {cluster}: ")
+            encryption_handler.encrypt(server_sql, f"server_sql_{cluster}")
+
+    return server_sql
+
 def execute_command(host):
     """Выполнить команду на выбранном хосте и вернуть результат."""
     global command_result
@@ -161,23 +196,27 @@ def create_database(cluster, cluster_user, cluster_pwd, newdb, host_db_server, u
         print(f"Ошибка при создании базы данных:\n{result.stderr}")
         return result.stderr  # Возвращаем сообщение об ошибке
 
-def delete_database(cluster, cluster_user, cluster_pwd, selected_host):
+def delete_database(cluster_code, cluster_user, cluster_pwd, selected_host, encryption_handler):
     """Разорвать подключения и удалить информационную базу по названию."""
     
     # Запрашиваем у пользователя название базы данных для удаления
     infobase_name = input("Введите название базы данных для удаления: ")
     
+    if not infobase_name:
+        print('Имя не задано. Отмена команды удаления.')
+        return
+
     # Запрашиваем у пользователя логин и пароль для PostgreSQL
     pass_handler = CredentialsManager()
-    psql_user = input("Введите логин для PostgreSQL: ")
-    psql_password = pass_handler.get_password("Введите пароль для PostgreSQL: ")
+    pg_host = get_postgres_adres(encryption_handler, cluster_code)
+    pg_user, pg_pwd = get_postgres_credentials(encryption_handler, pg_host)
     
     # Разрываем подключения к базе данных
-    os.environ['PGPASSWORD'] = psql_password
+    os.environ['PGPASSWORD'] = pg_pwd
     command = [
         r"C:\Program Files\PostgreSQL\16.3-16.1C\bin\psql.exe",
-        "-h", selected_host,
-        "-U", psql_user,
+        "-h", pg_host,
+        "-U", pg_user,
         "-d", infobase_name,  # Используем infobase_name как имя базы данных
         "-c", f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{infobase_name}' AND pid <> pg_backend_pid();"
     ]
@@ -197,7 +236,7 @@ def delete_database(cluster, cluster_user, cluster_pwd, selected_host):
         del os.environ['PGPASSWORD']
 
     # Получаем список информационных баз
-    command = f'{path_to_rac} infobase --cluster={cluster} --cluster-user={cluster_user} --cluster-pwd={cluster_pwd} summary list {selected_host}'
+    command = f'{path_to_rac} infobase --cluster={cluster_code} --cluster-user={cluster_user} --cluster-pwd={cluster_pwd} summary list {selected_host}'
     # print(command)
     result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='cp866')
 
@@ -223,7 +262,7 @@ def delete_database(cluster, cluster_user, cluster_pwd, selected_host):
         return
 
     # Выполняем команду для удаления базы данных
-    command = f'{path_to_rac} infobase --cluster={cluster} drop --drop-database --cluster-user="{cluster_user}" --cluster-pwd="{cluster_pwd}" --infobase={id_infobase} {selected_host}'
+    command = f'{path_to_rac} infobase --cluster={cluster_code} drop --drop-database --cluster-user="{cluster_user}" --cluster-pwd="{cluster_pwd}" --infobase={id_infobase} {selected_host}'
     print(command)
     result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='cp866')
 
@@ -249,10 +288,8 @@ def get_summary_list(encryption_handler, cluster_info, selected_host, cluster_us
                 result_rac = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='cp866')
 
         # Получаем список баз данных из psql
-        host = input("Введите хость сервера баз данных: ")
-        pass_handler = CredentialsManager()
-        user = input("Введите имя пользователя базы данных: ")
-        password = pass_handler.get_password("Введите пароль пользователя базы данных: ")
+        host = get_postgres_adres(encryption_handler, cluster_code)
+        user, password = get_postgres_credentials(encryption_handler, host)
         os.environ['PGPASSWORD'] = password
         command_psql = [
             r"C:\Program Files\PostgreSQL\16.3-16.1C\bin\psql.exe",
@@ -301,33 +338,44 @@ def handle_cluster_actions(encryption_handler, cluster_info, selected_host, clus
         cluster_option_index = menu.display_menu()
 
         if cluster_option_index == 0:  # Задать логин/пароль
+
             pass_handler = CredentialsManager()
-            cluster_user = input("Введите логин кластера: ")
-            cluster_pwd = pass_handler.get_password("Введите пароль кластера: ")
-            # Извлекаем cluster_code из cluster_info
-            cluster_code = cluster_info.splitlines()[0].split(':')[1].strip()  # Предполагается, что код кластера находится в первой строке
-            set_cluster_credentials(encryption_handler, cluster_code, cluster_user, cluster_pwd)
-            print('Логин и пароль кластера сохранены.\n')
+            if 'cluster' in cluster_info:
+                cluster_code = cluster_info.splitlines()[0].split(':')[1].strip()
+                cluster_user = input("Введите логин кластера: ")
+                cluster_pwd = pass_handler.get_password("Введите пароль кластера: ")
+                set_cluster_credentials(encryption_handler, cluster_code, cluster_user, cluster_pwd)
+                print('Логин и пароль кластера сохранены.\n')
+
+                # Запрашиваем логин и пароль для PostgreSQL
+                pg_user, pg_pwd = get_postgres_credentials(encryption_handler, get_postgres_adres(encryption_handler, cluster_code, rewrite = True), rewrite = True)
+            else:
+                print("Не удалось получить код кластера.\n")
         elif cluster_option_index == 1:  # Вывести список информационных баз
             common_bases = get_summary_list(encryption_handler, cluster_info, selected_host, cluster_user, cluster_pwd)
             for base_name, base_size in common_bases:
                 print(f"{base_name}: {base_size}")
         elif cluster_option_index == 2:  # Создать новую базу данных
             if 'cluster' in cluster_info:
-                cluster_code = cluster_info.splitlines()[0].split(':')[1].strip()
-                newdb = input("Введите имя новой базы данных: ")
-                host_db_server = input("Введите адрес сервера базы данных: ")
-                pass_handler = CredentialsManager()
-                user = input("Введите имя пользователя базы данных: ")
-                password = pass_handler.get_password("Введите пароль пользователя базы данных: ")
-                shedJobs = "on"  # Параметры для запланированных задач
-                creation_result = create_database(cluster_code, cluster_user, cluster_pwd, newdb, host_db_server, user, password, shedJobs, selected_host)
-                print(f"Результат выполнения команды создания базы данных:\n{creation_result}")
+                try:
+                    cluster_code = cluster_info.splitlines()[0].split(':')[1].strip()
+                    newdb = input("Введите имя новой базы данных: ")
+                    if not newdb:
+                        raise ValueError("Имя не задано.")
+                    host_db_server = get_postgres_adres(encryption_handler, cluster_code)
+                    db_user, db_pwd = get_postgres_credentials(encryption_handler, host_db_server)
+                    shedJobs = "on"  # Параметры для запланированных задач
+                    creation_result = create_database(cluster_code, cluster_user, cluster_pwd, newdb, host_db_server, db_user, db_pwd, shedJobs, selected_host)
+                    print(f"Результат выполнения команды создания базы данных:\n{creation_result}")
+                except Exception as e:
+                    print(f"Ошибка создания базы данных: {str(e)}")
             else:
                 print("Не удалось получить код кластера.\n")
         elif cluster_option_index == 3:  # Удалить информационную базу
             if 'cluster' in cluster_info:
                 cluster_code = cluster_info.splitlines()[0].split(':')[1].strip()
-                delete_database(cluster_code, cluster_user, cluster_pwd, selected_host)
+                delete_database(cluster_code, cluster_user, cluster_pwd, selected_host, encryption_handler)
+            else:
+                print("Не удалось получить код кластера.\n")
         elif cluster_option_index == 4:  # Назад
             break
